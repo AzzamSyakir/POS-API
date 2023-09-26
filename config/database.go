@@ -46,7 +46,13 @@ func InitDB() *sql.DB {
 	log.Info().Msg("Terhubung ke database!")
 
 	// Panggil fungsi migrate untuk inisialisasi migrasi database
-	migration.Migrate(db)
+	migration.UserMigrate(db)      // User -> Order
+	migration.PaymentMigration(db) // Payment -> Order
+	migration.CategorieMigrate(db) // Categories -> Product
+	migration.ProductMigrate(db)   // Product -> OrderProduct
+	migration.OrderMigration(db)   // Order -> OrderProduct
+	migration.OrderProductMigration(db)
+
 	DB = db
 
 	return db

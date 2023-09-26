@@ -6,17 +6,23 @@ import (
 )
 
 // Migrate digunakan untuk menjalankan migrasi tabel.
-func Migrate(db *sql.DB) {
+func UserMigrate(db *sql.DB) {
 	// SQL statement untuk memeriksa apakah tabel users sudah ada
 	checkTableSQL := `
-        SELECT 1 FROM users LIMIT 1
+        SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'
     `
 
 	// Menjalankan perintah SQL untuk memeriksa apakah tabel sudah ada
-	var exists int
-	err := db.QueryRow(checkTableSQL).Scan(&exists)
-	if err == nil {
-		// Jika tabel sudah ada, maka tidak perlu melakukan migrasi
+	var tableCount int
+	err := db.QueryRow(checkTableSQL).Scan(&tableCount)
+	if err != nil {
+		// Menangani kesalahan jika terjadi kesalahan saat memeriksa tabel
+		log.Fatal(err)
+		return
+	}
+
+	if tableCount > 0 {
+		// Jika tabel sudah ada, tampilkan pesan
 		log.Println("Tabel sudah di migrasi")
 		return
 	}
@@ -25,9 +31,11 @@ func Migrate(db *sql.DB) {
 	createTableSQL := `
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL,
             password VARCHAR(255) NOT NULL,
-            email VARCHAR(255) NOT NULL UNIQUE
+            email VARCHAR(255) NOT NULL UNIQUE,
+		created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
         )
     `
 

@@ -3,85 +3,24 @@ package controller
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"golang-api/api/responses"
 	"golang-api/config"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// LoginUser adalah handler untuk proses login pengguna.
-func LoginUser(w http.ResponseWriter, r *http.Request) {
-	var user map[string]interface{}
-
-	// Membaca data JSON dari body permintaan
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		responses.ErrorResponse(w, "Gagal membaca data pengguna dari permintaan", http.StatusBadRequest)
-		return
-	}
-
-	// Mendapatkan username dan password dari data pengguna
-	username, ok := user["username"].(string)
-	if !ok {
-		responses.ErrorResponse(w, "Username harus diisi", http.StatusBadRequest)
-		return
-	}
-
-	password, ok := user["password"].(string)
-	if !ok {
-		responses.ErrorResponse(w, "Password harus diisi", http.StatusBadRequest)
-		return
-	}
-
-	// Mengecek apakah pengguna ada di database dan mengambil password dari database
-	var dbPassword string
-	err := config.DB.QueryRow("SELECT password FROM users WHERE username=?", username).Scan(&dbPassword)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			responses.ErrorResponse(w, "User tidak ditemukan", http.StatusNotFound)
-			return
-		}
-		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Membandingkan password yang dimasukkan dengan password yang ada di database
-	if err := bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(password)); err != nil {
-		responses.ErrorResponse(w, "Password salah", http.StatusUnauthorized)
-		return
-	}
-	// Jika login berhasil, buat token JWT
-	token := jwt.New(jwt.SigningMethodHS256)
-
-	// Menentukan klaim (claims) token
-	claims := token.Claims.(jwt.MapClaims)
-	claims["username"] = username
-	claims["exp"] = time.Now().Add(time.Hour * 1).Unix() // Token berlaku selama 1 jam
-
-	// Menandatangani token dengan secret key (gantilah dengan secret key yang kuat)
-	secretKey := []byte("secretKey") // Ganti dengan secret key yang lebih kuat
-	tokenString, err := token.SignedString(secretKey)
-	if err != nil {
-		responses.ErrorResponse(w, "Gagal membuat token JWT", http.StatusInternalServerError)
-		return
-	}
-
-	// Mengembalikan token dan pesan sukses
-	response := map[string]interface{}{"token": tokenString}
-	responses.SuccessResponse(w, "berhasil login", response, http.StatusCreated)
-}
-
-func Register(w http.ResponseWriter, r *http.Request) {
+func CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Inisialisasi koneksi ke database
-	db := config.InitDB()
-	defer db.Close() // Tutup koneksi database setelah selesai
-
-	var user map[string]interface{}
+	var user struct {
+		Id       int64  // Gunakan tipe data int64 untuk ID
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		// Mengembalikan respons JSON jika gagal membaca data dari permintaan
@@ -89,53 +28,56 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username, ok := user["username"].(string)
-	if !ok {
-		responses.ErrorResponse(w, "Data username tidak valid", http.StatusBadRequest)
-		return
-	}
-	email, ok := user["email"].(string)
-	if !ok {
-		responses.ErrorResponse(w, "Data email tidak valid", http.StatusBadRequest)
-		return
-	}
-	password, ok := user["password"].(string)
-	if !ok {
-		responses.ErrorResponse(w, "Data password tidak valid", http.StatusBadRequest)
-		return
-	}
 	// Hashing password sebelum disimpan ke database
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		responses.ErrorResponse(w, "Gagal melakukan hashing password", http.StatusInternalServerError)
 		return
 	}
+	// Waktu saat ini
+	currentTime := time.Now()
 
 	// Simpan pengguna ke database dengan menggunakan data yang telah Anda validasi
-	_, err = db.Exec("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", username, email, hashedPassword)
+	result, err := config.DB.Exec("INSERT INTO users (name, email, password, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		user.Name, user.Email, hashedPassword, currentTime, currentTime) // Mengganti user.Username menjadi user.Name
 	if err != nil {
 		// Menangani kesalahan jika gagal menyimpan pengguna ke database
 		errorMessage := "Gagal menyimpan pengguna ke database"
 		if strings.Contains(err.Error(), "Duplicate entry") {
 			errorMessage = "Email sudah digunakan. Silakan gunakan email lain."
+		} else {
+			errorMessage = "Terjadi kesalahan saat menyimpan pengguna ke database."
 		}
 		responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
 		return
 	}
 
-	// Membuat objek data pengguna untuk dikirim dalam respons
-	userData := struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
-	}{
-		Username: username,
-		Email:    email,
-		Password: string(hashedPassword),
+	// Mendapatkan ID yang baru saja ditambahkan ke database
+	lastInsertId, err := result.LastInsertId()
+	if err != nil {
+		responses.ErrorResponse(w, "Gagal mendapatkan ID pengguna yang baru", http.StatusInternalServerError)
+		return
 	}
 
-	responses.SuccessResponse(w, "Pengguna telah berhasil dibuat", userData, http.StatusCreated)
+	// Mengisi ID pada struct user dengan nilai yang baru saja didapatkan
+	user.Id = lastInsertId
+
+	// Membuat objek data pengguna untuk dikirim dalam respons
+	userData := struct {
+		Id        int64     `json:"id"` // Gunakan ID yang telah diisi
+		Name      string    `json:"name"`
+		Email     string    `json:"email"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}{
+		Id:        user.Id,
+		Name:      user.Name,
+		Email:     user.Email,
+		CreatedAt: currentTime,
+		UpdatedAt: currentTime,
+	}
+
+	responses.SuccessResponse(w, "Success", userData, http.StatusCreated)
 }
 
 // mengambil user berdasarkan ID.
@@ -146,19 +88,19 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 
 	if userID == "" {
 		// Tangani jika ID pengguna tidak ada
-		http.Error(w, "ID pengguna harus diisi", http.StatusBadRequest)
+		responses.ErrorResponse(w, "ID pengguna harus diisi", http.StatusBadRequest)
 		return
 	}
 
 	// Mengambil pengguna dari database berdasarkan ID
 	var (
 		id       int
-		username string
+		name     string
 		email    string
 		password string
 	)
 
-	err := config.DB.QueryRow("SELECT id, username, email, Password FROM users WHERE id=?", userID).Scan(&id, &username, &email, &password)
+	err := config.DB.QueryRow("SELECT id, name, email, password FROM users WHERE id=?", userID).Scan(&id, &name, &email, &password)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			responses.ErrorResponse(w, "user tidak ditemukan", http.StatusNotFound)
@@ -170,6 +112,41 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 
 	// Membuat objek data pengguna untuk dikirim dalam respons
 	userData := struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
+	}{
+		Name:     name,
+		Email:    email,
+		Password: password,
+	}
+
+	// Mengembalikan data pengguna sebagai JSON
+	w.Header().Set("Content-Type", "application/json")
+	responses.SuccessResponse(w, "Success", userData, http.StatusCreated)
+}
+
+// Fetch User
+func FetchUser(w http.ResponseWriter, r *http.Request) {
+	// Mengambil pengguna dari database berdasarkan ID
+	var (
+		id       int
+		username string
+		email    string
+		password string
+	)
+	err := config.DB.QueryRow("SELECT * FROM users").Scan(&id, &username, &email, &password)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			responses.ErrorResponse(w, "tidak ada data dalam tabel", http.StatusNotFound)
+			return
+		}
+		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Membuat objek data pengguna untuk dikirim dalam respons
+	userData := struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -179,58 +156,78 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 		Email:    email,
 		Password: password,
 	}
-
 	// Mengembalikan data pengguna sebagai JSON
 	w.Header().Set("Content-Type", "application/json")
-	responses.SuccessResponse(w, "berhasil ambil user", userData, http.StatusCreated)
+	responses.SuccessResponse(w, "Success", userData, http.StatusCreated)
 }
 
-// UpdateUserHandler memperbarui data pengguna berdasarkan ID.
+// update user
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
-	// Mendapatkan ID pengguna dari parameter URL
-	userID := r.URL.Query().Get("id")
+	// Mendapatkan ID pengguna dari parameter pakai library mux
+	vars := mux.Vars(r)
+	userID := vars["id"]
 	if userID == "" {
-		http.Error(w, "ID pengguna harus disertakan", http.StatusBadRequest)
+		responses.ErrorResponse(w, "ID pengguna harus disertakan", http.StatusBadRequest)
 		return
 	}
 
 	// Mendapatkan data pengguna dari body permintaan
 	var updatedUser struct {
-		Username string `json:"username"`
+		Name     string `json:"name"`
 		Email    string `json:"email"`
-		Password string `json:"Password"`
+		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&updatedUser); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		responses.ErrorResponse(w, "Gagal membaca data pengguna dari permintaan", http.StatusBadRequest)
+		return
+	}
+
+	// Hashing password sebelum disimpan ke database
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(updatedUser.Password), bcrypt.DefaultCost)
+	if err != nil {
+		responses.ErrorResponse(w, "Gagal melakukan hashing password", http.StatusInternalServerError)
 		return
 	}
 
 	// Memperbarui pengguna di database
-	_, err := config.DB.Exec("UPDATE users SET username=?, email=? WHERE id=?", updatedUser.Username, updatedUser.Email, userID)
+	_, err = config.DB.Exec("UPDATE users SET name=?, email=?, password=? WHERE id=?", updatedUser.Name, updatedUser.Email, hashedPassword, userID) // Mengganti userID menjadi updatedUser.Name
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Membuat objek data pengguna untuk dikirim dalam respons
+	userData := struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
+	}{
+		Name:     updatedUser.Name,
+		Email:    updatedUser.Email,
+		Password: string(hashedPassword),
+	}
 
-	fmt.Fprintln(w, "Pengguna telah diperbarui")
+	responses.SuccessResponse(w, "Success", userData, http.StatusOK)
 }
 
-// DeleteUserHandler menghapus pengguna berdasarkan ID.
+// delete
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
-	// Mendapatkan ID pengguna dari parameter URL
-	userID := r.URL.Query().Get("id")
+	// Mendapatkan ID pengguna dari parameter URL pakai library mux
+	vars := mux.Vars(r)
+	userID := vars["id"]
 	if userID == "" {
-		http.Error(w, "ID pengguna harus disertakan", http.StatusBadRequest)
+		responses.ErrorResponse(w, "ID pengguna harus disertakan", http.StatusBadRequest)
 		return
 	}
 
 	// Menghapus pengguna dari database
 	_, err := config.DB.Exec("DELETE FROM users WHERE id=?", userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 
-	fmt.Fprintln(w, "Pengguna telah dihapus")
+	responses.OtherResponses(w, "Success", http.StatusCreated)
 }
