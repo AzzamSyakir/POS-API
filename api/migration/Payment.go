@@ -32,7 +32,7 @@ func PaymentMigration(db *sql.DB) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             type VARCHAR(255) NOT NULL,
-            logo VARCHAR(255) NOT NULL,
+            logo VARCHAR(1000) NULL,
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL
         )

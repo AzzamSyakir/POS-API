@@ -34,9 +34,9 @@ func ProductMigrate(db *sql.DB) {
             name VARCHAR(255) NOT NULL,
             stock VARCHAR(255) NOT NULL ,
             price VARCHAR(255) NOT NULL ,
-            image VARCHAR(255) NOT NULL,
-		category_id INT,
-            created_at TIMESTAMP NOT NULL,
+            image VARCHAR(1000) NOT NULL,
+		category_id INT NULL,
+		created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL,
 		FOREIGN KEY (category_id) REFERENCES categories(id)
         )

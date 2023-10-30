@@ -28,21 +28,23 @@ func OrderMigration(db *sql.DB) {
 	}
 	// SQL statement untuk membuat tabel orders
 	createTableSQL := `
-        CREATE TABLE IF NOT EXISTS orders (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT,
-            payment_id INT,
-            name VARCHAR(255) NOT NULL,
-            total_price DECIMAL(10, 2) NOT NULL,
-            total_paid DECIMAL(10, 2) NOT NULL,
-            total_return DECIMAL(10, 2) NOT NULL,
-            receipt_code VARCHAR(255) NOT NULL,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (payment_id) REFERENCES payments(id)
-        )
-    `
+	CREATE TABLE IF NOT EXISTS orders (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT,
+		payment_id INT,
+		name VARCHAR(255) NOT NULL,
+		total_price INT NOT NULL,
+		total_paid INT  NOT NULL,
+		total_return INT	NOT NULL,
+		receipt_code varchar(255) NOT NULL,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id),
+		FOREIGN KEY (payment_id) REFERENCES payments(id)
+	  );
+	  
+	  
+`
 
 	// Menjalankan perintah SQL untuk membuat tabel
 	_, err = db.Exec(createTableSQL)

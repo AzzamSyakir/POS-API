@@ -6,8 +6,6 @@ import (
 	"golang-api/api/migration"
 	"os"
 
-	"github.com/joho/godotenv"
-
 	_ "github.com/go-sql-driver/mysql" // Import driver MySQL
 	"github.com/rs/zerolog/log"
 )
@@ -16,11 +14,7 @@ var DB *sql.DB
 
 // InitDB digunakan untuk menghubungkan ke database.
 func InitDB() *sql.DB {
-	//load env
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Gagal membaca file .env")
-	}
+
 	//baca env nya
 	sqlInfo := fmt.Sprintf(
 		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",

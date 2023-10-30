@@ -3,9 +3,11 @@ package controller
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"golang-api/api/responses"
 	"golang-api/config"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -21,10 +23,10 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mendapatkan username dan password dari data pengguna
-	username, ok := user["username"].(string)
+	// Mendapatkan email dan password dari data pengguna
+	email, ok := user["email"].(string)
 	if !ok {
-		responses.ErrorResponse(w, "Username harus diisi", http.StatusBadRequest)
+		responses.ErrorResponse(w, "Email harus diisi", http.StatusBadRequest)
 		return
 	}
 
@@ -34,9 +36,11 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mengecek apakah pengguna ada di database dan mengambil password dari database
+	// Mengecek apakah pengguna ada di database dan mengambil ID dan password dari database
+	var userID int
 	var dbPassword string
-	err := config.DB.QueryRow("SELECT password FROM users WHERE username=?", username).Scan(&dbPassword)
+	var dbName string
+	err := config.DB.QueryRow("SELECT id, name, password FROM users WHERE email=?", email).Scan(&userID, &dbName, &dbPassword)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			responses.ErrorResponse(w, "User tidak ditemukan", http.StatusNotFound)
@@ -51,23 +55,28 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		responses.ErrorResponse(w, "Password salah", http.StatusUnauthorized)
 		return
 	}
+
 	// Jika login berhasil, buat token JWT
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	// Menentukan klaim (claims) token
 	claims := token.Claims.(jwt.MapClaims)
-	claims["username"] = username
-	claims["exp"] = time.Now().Add(time.Hour * 1).Unix() // Token berlaku selama 1 jam
+	claims["user_id"] = userID
+	claims["username"] = dbName
+	claims["exp"] = time.Now().Add(time.Hour * 24).Unix() // Token berlaku selama 24 jam
 
-	// Menandatangani token dengan secret key (gantilah dengan secret key yang kuat)
-	secretKey := []byte("secretKey") // Ganti dengan secret key yang lebih kuat
+	// Menandatangani token dengan secret key
+	secretKeyString := os.Getenv("SECRET_KEY")
+	secretKey := []byte(secretKeyString)
+
 	tokenString, err := token.SignedString(secretKey)
 	if err != nil {
-		responses.ErrorResponse(w, "Gagal membuat token JWT", http.StatusInternalServerError)
+		errorMessage := fmt.Sprintf("Gagal membuat token JWT: %v", err)
+		responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
 		return
 	}
 
 	// Mengembalikan token dan pesan sukses
 	response := map[string]interface{}{"token": tokenString}
-	responses.SuccessResponse(w, "succes", response, http.StatusCreated)
+	responses.SuccessResponse(w, "success", response, http.StatusCreated)
 }

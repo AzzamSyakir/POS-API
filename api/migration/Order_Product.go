@@ -33,7 +33,7 @@ func OrderProductMigration(db *sql.DB) {
             order_id INT,
             product_id INT,
             qty INT NOT NULL,
-            total_price DECIMAL(10, 2) NOT NULL,
+            total_price DECIMAL NOT NULL,
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL,
             FOREIGN KEY (order_id) REFERENCES orders(id),

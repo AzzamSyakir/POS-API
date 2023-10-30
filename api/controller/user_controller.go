@@ -80,30 +80,32 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	responses.SuccessResponse(w, "Success", userData, http.StatusCreated)
 }
 
-// mengambil user berdasarkan ID.
+// Mengambil user berdasarkan ID.
 func GetUser(w http.ResponseWriter, r *http.Request) {
 	// Mendapatkan ID pengguna dari parameter URL
 	vars := mux.Vars(r)
-	userID := vars["id"]
+	userID, ok := vars["id"]
 
-	if userID == "" {
-		// Tangani jika ID pengguna tidak ada
+	if !ok || userID == "" {
+		// Tangani jika ID pengguna tidak ada atau kosong
 		responses.ErrorResponse(w, "ID pengguna harus diisi", http.StatusBadRequest)
 		return
 	}
 
-	// Mengambil pengguna dari database berdasarkan ID
+	// Mengambil data pengguna dari database berdasarkan ID
 	var (
-		id       int
-		name     string
-		email    string
-		password string
+		name       string
+		email      string
+		created_at string
+		updated_at string
 	)
 
-	err := config.DB.QueryRow("SELECT id, name, email, password FROM users WHERE id=?", userID).Scan(&id, &name, &email, &password)
+	// Query database menggunakan prepared statement untuk menghindari SQL injection
+	err := config.DB.QueryRow("SELECT name, email, created_at, updated_at FROM users WHERE id=?", userID).
+		Scan(&name, &email, &created_at, &updated_at)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			responses.ErrorResponse(w, "user tidak ditemukan", http.StatusNotFound)
+			responses.ErrorResponse(w, "User tidak ditemukan", http.StatusNotFound)
 			return
 		}
 		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
@@ -112,31 +114,33 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 
 	// Membuat objek data pengguna untuk dikirim dalam respons
 	userData := struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
+		Name       string `json:"name"`
+		Email      string `json:"email"`
+		Created_at string `json:"created_at"`
+		Updated_at string `json:"updated_at"`
 	}{
-		Name:     name,
-		Email:    email,
-		Password: password,
+		Name:       name,
+		Email:      email,
+		Created_at: created_at,
+		Updated_at: updated_at,
 	}
 
 	// Mengembalikan data pengguna sebagai JSON
 	w.Header().Set("Content-Type", "application/json")
-	responses.SuccessResponse(w, "Success", userData, http.StatusCreated)
+	responses.SuccessResponse(w, "Success", userData, http.StatusOK)
 }
 
 // Fetch User
 func FetchUser(w http.ResponseWriter, r *http.Request) {
-	// Mengambil pengguna dari database berdasarkan ID
 	var (
-		id       int
-		username string
-		email    string
-		password string
+		id         int
+		username   string
+		email      string
+		password   string
+		created_at string
+		updated_at string
 	)
-	err := config.DB.QueryRow("SELECT * FROM users").Scan(&id, &username, &email, &password)
+	err := config.DB.QueryRow("SELECT * FROM users").Scan(&id, &username, &email, &password, &created_at, &updated_at)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			responses.ErrorResponse(w, "tidak ada data dalam tabel", http.StatusNotFound)
@@ -147,14 +151,18 @@ func FetchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// Membuat objek data pengguna untuk dikirim dalam respons
 	userData := struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Username   string `json:"username"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		Created_at string `json:"created_at"`
+		Updated_at string `json:"updated_at"`
 		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
 	}{
-		Username: username,
-		Email:    email,
-		Password: password,
+		Username:   username,
+		Email:      email,
+		Password:   password,
+		Created_at: created_at,
+		Updated_at: updated_at,
 	}
 	// Mengembalikan data pengguna sebagai JSON
 	w.Header().Set("Content-Type", "application/json")
@@ -191,21 +199,24 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Memperbarui pengguna di database
-	_, err = config.DB.Exec("UPDATE users SET name=?, email=?, password=? WHERE id=?", updatedUser.Name, updatedUser.Email, hashedPassword, userID) // Mengganti userID menjadi updatedUser.Name
+	_, err = config.DB.Exec("UPDATE users SET name=?, email=?, password=?,  updated_at=NOW()  WHERE id=?", updatedUser.Name, updatedUser.Email, hashedPassword, userID) // Mengganti userID menjadi updatedUser.Name
 	if err != nil {
 		responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// Membuat objek data pengguna untuk dikirim dalam respons
 	userData := struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		Password  string `json:"password"`
+		UpdatedAt string `json:"updated_at"`
 		// Anda dapat menambahkan lebih banyak data pengguna sesuai kebutuhan
 	}{
-		Name:     updatedUser.Name,
-		Email:    updatedUser.Email,
-		Password: string(hashedPassword),
+		Name:      updatedUser.Name,
+		Email:     updatedUser.Email,
+		Password:  string(hashedPassword),
+		UpdatedAt: time.Now().Format(time.RFC3339), // Menggunakan format waktu yang sesuai
+
 	}
 
 	responses.SuccessResponse(w, "Success", userData, http.StatusOK)
