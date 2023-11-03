@@ -50,9 +50,7 @@ func SetupRoutes() *mux.Router {
 	// Orders API
 	protectedRoutes.HandleFunc("/orders", controller.CreateOrders).Methods("POST")
 	protectedRoutes.HandleFunc("/orders", controller.ListOrders).Methods("GET")
-	protectedRoutes.HandleFunc("/payments/{id}", controller.DetailPayments).Methods("GET")
-	protectedRoutes.HandleFunc("/payments/{id}", controller.UpdatePayments).Methods("PUT")
-	protectedRoutes.HandleFunc("/payments/{id}", controller.DeletePayments).Methods("DELETE")
+	protectedRoutes.HandleFunc("/orders/{id}", controller.DetailOrders).Methods("GET")
 
 	return r
 }

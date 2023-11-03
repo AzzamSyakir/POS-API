@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"golang-api/api/responses"
 	"golang-api/config"
-	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
 )
 
 func CreateOrders(w http.ResponseWriter, r *http.Request) {
@@ -310,10 +310,8 @@ func ListOrders(w http.ResponseWriter, r *http.Request) {
 		responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
 	var orders []Orders
-	var orderProducts []OrderProduct
 	var products []Products
 	var payments Payments
 	var product Products
@@ -343,77 +341,92 @@ func ListOrders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// end payments
+		var orderProducts OrderProduct
 
-		for rows.Next() {
-			// get data OrderProducts
-			orderId := order.ID
-			fmt.Print(orderId)
+		// get data products from id products in orders
 
-			query := "SELECT id, order_id, product_id, qty, total_price FROM order_products WHERE order_id = ?"
-			rows, err := config.DB.Query(query, orderId)
+		for _, orderProduct := range orders {
+			err := config.DB.QueryRow("SELECT product_id FROM order_products WHERE order_id=?", orderProduct.ID).Scan(
+				&orderProducts.ProductID,
+			)
+
 			if err != nil {
-				errorMessage := fmt.Sprintf("Gagal ambil data order_products: %v", err)
-				responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
+				if err == sql.ErrNoRows {
+					errorMessage := fmt.Sprintf("order_products dengan ID %d tidak ditemukan", orderProduct.ID)
+					responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
+					return
+				}
+			}
+		}
+		// get data products from id products in orders
+		var productIDs []int
+
+		// Mengambil data dari tabel order_products berdasarkan order_id
+		rows, err := config.DB.Query("SELECT product_id FROM order_products WHERE order_id=?", order.ID)
+		if err != nil {
+			// Handle database errors
+			responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		// Iterasi melalui hasil query order_products dan tambahkan product_id ke dalam slice productIDs
+		for rows.Next() {
+			var productID int
+			err := rows.Scan(&productID)
+			if err != nil {
+				// Handle database errors
+				responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			defer rows.Close() // Tutup rows setelah selesai menggunakan
+			productIDs = append(productIDs, productID)
+		}
+		// products
+		// Iterasi melalui setiap id dalam slice productIDs
+		for _, productID := range productIDs {
+			var product Products
 
-			// Loop rows dan memasukkan data ke dalam slice orderProducts
-			for rows.Next() {
-				var op OrderProduct
-				err := rows.Scan(&op.Id, &op.Order_id, &op.ProductID, &op.Qty, &op.Total_price)
-				if err != nil {
-					errorMessage := fmt.Sprintf("Gagal masukkan data order_products: %v", err)
-					responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
+			// Jalankan query SQL untuk mengambil produk berdasarkan id
+			err := config.DB.QueryRow("SELECT id, sku, name, stock, price, image, created_at, updated_at FROM products WHERE id=?", productID).Scan(
+				&product.ID, &product.SKU, &product.Name, &product.Stock, &product.Price, &product.Image, &product.CreatedAt, &product.UpdatedAt,
+			)
+
+			if err != nil {
+				if err == sql.ErrNoRows {
+					errorMessage := fmt.Sprintf("Produk dengan ID %d tidak ditemukan", productID)
+					responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
 					return
 				}
-				orderProducts = append(orderProducts, op)
+				// Handle other database errors
+				responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
-			// end order_products
-			for _, orderProduct := range orderProducts {
-				// Pastikan orderProduct.ProductID tidak nil sebelum mengakses nilainya
-				if orderProduct.ProductID != nil {
-					productID := *orderProduct.ProductID
-					fmt.Println("Product ID:", productID)
-				} else {
-					fmt.Println("Product ID is nil")
-				}
+
+			// Tambahkan produk ke dalam slice products
+			products = append(products, product)
+		}
+		// end order_products
+
+		// products
+		err = config.DB.QueryRow("SELECT id, sku, name, stock, price, image, created_at, updated_at FROM products WHERE id=?", &orderProducts.ProductID).Scan(
+			&product.ID, &product.SKU, &product.Name, &product.Stock, &product.Price, &product.Image, &product.CreatedAt, &product.UpdatedAt,
+		)
+
+		if err != nil {
+			if err == sql.ErrNoRows {
+				errorMessage := fmt.Sprintf("Produk dengan ID %d tidak ditemukan", orderProducts.ProductID)
+				responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
+				return
 			}
-			// end order-product
-			// get data products from id products in orders
-			for _, orderProduct := range orderProducts {
-				// Pastikan productID tidak nil
-				if orderProduct.ProductID == nil {
-					errorMessage := "Product ID is nil"
-					responses.ErrorResponse(w, errorMessage, http.StatusBadRequest)
-					return
-				}
-				// Query produk berdasarkan productID
-				err := config.DB.QueryRow("SELECT id, sku, name, stock, price, image, created_at, updated_at FROM products WHERE id=?", *orderProduct.ProductID).Scan(
-					&product.ID, &product.SKU, &product.Name, &product.Stock, &product.Price, &product.Image, &product.CreatedAt, &product.UpdatedAt,
-				)
-
-				if err != nil {
-					if err == sql.ErrNoRows {
-						errorMessage := fmt.Sprintf("Produk dengan ID %d tidak ditemukan", *orderProduct.ProductID)
-						responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
-						return
-					}
-					// Handle other database errors
-					responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-
-				// Tambahkan produk ke slice products
-				products = append(products, product)
-
-				log.Println("Mengecek orderProduct:", *orderProduct.ProductID)
-				log.Printf("Data produk: %+v\n", product)
-			}
-			// end products
+			// Handle other database errors
+			responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
+		// Tambahkan produk ke slice products
+		products = append(products, product)
 	}
+	// end products
 	total := len(orders)
 
 	response := map[string]interface{}{
@@ -430,4 +443,185 @@ func ListOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	responses.SuccessResponse(w, "Success", response, http.StatusOK)
+}
+
+func DetailOrders(w http.ResponseWriter, r *http.Request) {
+	type OrderProduct struct {
+		Id          *int64 `json:"id"`
+		Order_id    *int64 `json:"order_id"`
+		ProductID   *int64 `json:"product_id"`
+		Qty         *int64 `json:"qty"`
+		Total_price *int64 `json:"total_normal_price"`
+	}
+
+	type Products struct {
+		ID        *int64  `json:"id"`
+		SKU       *string `json:"sku"`
+		Name      *string `json:"name"`
+		Stock     *string `json:"stock"`
+		Price     *string `json:"price"`
+		Image     *string `json:"image"`
+		CreatedAt *string `json:"created_at"`
+		UpdatedAt *string `json:"updated_at"`
+	}
+	type Payments struct {
+		Id   int    `json:"payment_id"`
+		Name string `json:"name"`
+		Type string `json:"type"`
+		Logo string `json:"logo"`
+	}
+	type Orders struct {
+		ID              int     `json:"id"`
+		User_id         int     `json:"user_id"`
+		Payment_type_id int     `json:"payment_type_id"`
+		Total_price     int     `json:"total_price"`
+		Total_paid      int     `json:"total_paid"`
+		Total_return    int     `json:"total_return"`
+		CreatedAt       *string `json:"created_at"`
+		UpdatedAt       *string `json:"updated_at"`
+		Receipt_id      string  `json:"receipt_id"`
+	}
+	// get id param
+	vars := mux.Vars(r)
+	OrderID := vars["id"]
+
+	if OrderID == "" {
+		// Tangani jika ID produk tidak ada
+		responses.ErrorResponse(w, "ID orders harus diisi", http.StatusBadRequest)
+		return
+	}
+	// get data orders from db
+	query := "SELECT id, user_id, payment_id, total_price, total_paid, total_return, receipt_code, created_at, updated_at FROM orders WHERE id = ?"
+	rows, err := config.DB.Query(query, OrderID)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Gagal ambil data  orders: %v", err)
+
+		responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
+		return
+	}
+	var orders []Orders
+	var products []Products
+	var payments Payments
+
+	for rows.Next() {
+		var order Orders
+		err := rows.Scan(&order.ID, &order.User_id, &order.Payment_type_id, &order.Total_price, &order.Total_paid, &order.Total_return, &order.Receipt_id,
+			&order.CreatedAt, &order.UpdatedAt)
+		if err != nil {
+			errorMessage := fmt.Sprintf("Gagal masukkan data orders ke var: %v", err)
+			responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
+			return
+		}
+		orders = append(orders, order)
+
+		// end orders
+		defer rows.Close()
+		// get data payment from id payment in orders
+		err = config.DB.QueryRow("SELECT id, name, type, logo FROM payments WHERE id=?", order.Payment_type_id).Scan(&payments.Id, &payments.Name, &payments.Type, &payments.Logo)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				errorMessage := fmt.Sprintf("Gagal ambil data payments: %v", err)
+
+				responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
+				return
+			}
+			responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// end payments
+		var orderProducts OrderProduct
+
+		// get data products from id products in orders
+
+		for _, orderProduct := range orders {
+			err := config.DB.QueryRow("SELECT product_id FROM order_products WHERE order_id=?", orderProduct.ID).Scan(
+				&orderProducts.ProductID,
+			)
+
+			if err != nil {
+				if err == sql.ErrNoRows {
+					errorMessage := fmt.Sprintf("order_products dengan ID %d tidak ditemukan", orderProduct.ID)
+					responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
+					return
+				}
+			}
+		}
+		// get data products from id products in orders
+		var productIDs []int
+
+		// Mengambil data dari tabel order_products berdasarkan order_id
+		rows, err := config.DB.Query("SELECT product_id FROM order_products WHERE order_id=?", order.ID)
+		if err != nil {
+			// Handle database errors
+			responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		// Iterasi melalui hasil query order_products dan tambahkan product_id ke dalam slice productIDs
+		for rows.Next() {
+			var productID int
+			err := rows.Scan(&productID)
+			if err != nil {
+				responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			productIDs = append(productIDs, productID)
+		}
+		// products
+		// Iterasi melalui setiap id dalam slice productIDs
+		for _, productID := range productIDs {
+			var product Products
+
+			// Jalankan query SQL untuk mengambil produk berdasarkan id
+			err := config.DB.QueryRow("SELECT id, sku, name, stock, price, image, created_at, updated_at FROM products WHERE id=?", productID).Scan(
+				&product.ID, &product.SKU, &product.Name, &product.Stock, &product.Price, &product.Image, &product.CreatedAt, &product.UpdatedAt,
+			)
+
+			if err != nil {
+				if err == sql.ErrNoRows {
+					errorMessage := fmt.Sprintf("Produk dengan ID %d tidak ditemukan", productID)
+					responses.ErrorResponse(w, errorMessage, http.StatusNotFound)
+					return
+				}
+				// Handle other database errors
+				responses.ErrorResponse(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// Tambahkan produk ke dalam slice products
+			products = append(products, product)
+		}
+
+		// buat respons
+		type Response struct {
+			ID            int64      `json:"id"`
+			UserID        int        `json:"user_id"`
+			PaymentTypeID int        `json:"payment_type_id"`
+			TotalPrice    int        `json:"total_price"`
+			TotalPaid     int        `json:"total_paid"`
+			TotalReturn   int        `json:"total_return"`
+			ReceiptID     string     `json:"receipt_id"`
+			Products      []Products `json:"products"`
+			PaymentType   Payments   `json:"payment_type"`
+			UpdatedAt     string     `json:"updated_at"`
+			CreatedAt     string     `json:"created_at"`
+		}
+		responseData := Response{
+			ID:            int64(order.ID),
+			UserID:        order.User_id,
+			PaymentTypeID: order.Payment_type_id,
+			TotalPrice:    order.Total_price,
+			TotalPaid:     order.Total_paid,
+			TotalReturn:   order.Total_return,
+			ReceiptID:     order.Receipt_id,
+			Products:      products,
+			PaymentType:   payments,
+			UpdatedAt:     *order.UpdatedAt,
+			CreatedAt:     *order.CreatedAt,
+		}
+		// Mengembalikan data produk sebagai JSON
+		w.Header().Set("Content-Type", "application/json")
+		responses.SuccessResponse(w, "Success", responseData, http.StatusOK)
+	}
 }
