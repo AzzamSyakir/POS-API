@@ -1,6 +1,6 @@
 ### Point of Sale (POS) API 
 
-Welcome to the documentation for my *Point of Sale (POS) API! This API streamlines the management of **products, **categories, **users, **payments, and **orders*, ensuring a smooth and efficient operation for your business. Below, you'll find a detailed overview of the API endpoints and their functionalities.
+Welcome to the documentation for my *Point of Sale (POS) API! This API streamlines the management of ***products, **categories, **users, **payments, and **orders*, ensuring a smooth and efficient operation for your business. Below, you'll find a detailed overview of the API endpoints and their functionalities.
 
 *Table of Contents*
 
