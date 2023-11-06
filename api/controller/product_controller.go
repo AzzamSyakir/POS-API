@@ -217,7 +217,8 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := wc.Close(); err != nil {
-		responses.ErrorResponse(w, "Error closing writer", http.StatusInternalServerError)
+		errorMessage := fmt.Sprintf("Error closing writer: %v", err)
+		responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
 		return
 	}
 

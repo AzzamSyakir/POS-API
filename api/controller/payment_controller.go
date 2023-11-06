@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -73,7 +74,7 @@ func CreatePayment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Menyimpan logo ke Firebase Storage
-		bucket := "pos-project-4fd7d.appspot.com"
+		bucket := os.Getenv("FIREBASE_BUCKET")
 		objectName := "Logo/" + uuid.NewString()
 
 		bucketHandle, err := client.Bucket(bucket)
@@ -91,12 +92,17 @@ func CreatePayment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		expirationTime := time.Now().AddDate(1, 0, 0)
+		googleAccessID := os.Getenv("GOOGLE_ACCESS_ID")
+		PrivateKey := os.Getenv("PRIVATE_KEY")
+		if err != nil {
+			errorMessage := fmt.Sprintf("Error get env var: %v", err)
+			responses.ErrorResponse(w, errorMessage, http.StatusInternalServerError)
+			return
+		}
 
-		// Membuat signed URL
 		url, err := storage.SignedURL(bucket, objectName, &storage.SignedURLOptions{
-			// Google Access ID dan Private Key akan diambil dari variabel opt
-			GoogleAccessID: "firebase-adminsdk-j0hrj@pos-project-4fd7d.iam.gserviceaccount.com",
-			PrivateKey:     []byte("-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCGoSaCRMn+LAoq\neMiIkV19qG4ixFSGh2X1/xQb/SUyEX51lCyrIn2nS0ANxT8lJ9z40MjRsp26UbUs\n0Wid7uDkixnDhR+R8oOZOpBmZcDtquIsXXMUS0y9nvgD5JJjOBZDF2SCry3f0zyi\nZ0S/JcOoKQ03XACBelpIyjQto+PrdyPljZDSC/DeahpUdQM5xbW2+AKGEQxvCZsc\ni3XM23rryZaH3JrjLJiIjrS4cNaZiGXbePwZ+QcVebCWDGPXWHOCaFSUVA78cPjV\nDhYnS8uZbVvK1Hlw4LXEAKRhKeLh9yKWhVl+gL/tgdBKj9NdbaHPJdWNYWYoRqek\nxqEfB30DAgMBAAECggEABYmIQ3Bf3HfkPSX1nYRZE4uDaCOqFFRqUalZouMRDhOh\nH2XmRm2nPGPAcTCNLdKLaKJxuApAKYMlz/+W7XP/RPchqqSFjWOrnPhHKycBPeU6\n4zc+vfVw5RWuPr6+dJ1AcSb7p9JbsSqHgmh77962QurZU88RaEHnh7nlVoE4pR0U\nkxogNss2y1pR3KZh5lvhNavy9RYKpE/uahUQQavhLczLUWro6AMU8qI1Nt5cPM8P\nrYhFkxosWigTvPok87Lag8eWVAN0kRUHeq273BhkafOXR+BNjYQN/qXEvs1/FZ2E\np5N+Uug0DzFBb7SRKRU2xeCncqMZ8cdmg3JSA8bvoQKBgQC9cVGDEriZIYfWSCO4\n2hN5+99FN8akDlM369p98A+7RWknQ/ueVmDAPUfGegwM5fsVbc7H09yCIDfakUEj\nVEgV4UitXm7YQ/YC2moRDqlzSS4BvGXzngXtoDn0uztSWje3Cq80PNqw64LL7VLx\npjphqVwine94xPDKIzA5GrtcYQKBgQC17eBHl/dOL8pcFEWmzqVPevmHT24w4UBo\nytWwzN/9+5Hzr13kk6KtiSMj5XG93HUAmDe0NvCNGCqgBXhMux3U5ygYdNXqW9Mv\nXt1VIJaFG63tB8aRzraMbhFMNF5bz0CzShne8DTmv8UeY/sH1UVndTE8eelA1VFf\nrm48goVz4wKBgQCeC3LYaf7taebcYzTCG9VR2EqNgZnL9lOA/Ng8ZtGJB8BRTMsX\nbrKqzrUZpWp2PEu7te9kEKEPQne2daYlJkQ5VMiAMp9A93m/KZ6BenztvCiQtC9O\nDhCeDSUswiMccj23DEfcycQdA24MWYLwLSDZpyRBkQde9tZ3nOG3UlDrIQKBgQCh\nXs0oU+g9xvA0upqJehRxqn+5AMCZxMMP8JKZDzDDpShxwSSEgluyl8i+p187bFev\n3lTSmkTGsh/k7tUlIng0h5EuGDxCc46gHwIt5wj8KnAcpmAApx2O9HaNZIop32zh\nWyIVeHVEE+fxq/dXnFnCidXRccVvB4f1WdBYBeH/xwKBgQCmnTsTXaJ0N5lP43Sm\n6XcvbIOdH6GvYdPsHL+1o+RwYnLzLhj22VivFf3pUMIpCU8dUmUoNSWSMxed5h4c\nXk+pz2WBB3rjGla/+vmtLP1H1HEjAqxc/dKbe97exN1JEoDrCfC5upmleUMC9dwe\n5f1W9kHb8EI+Lg3tV2sKNLJ//Q==\n-----END PRIVATE KEY-----\n"),
+			GoogleAccessID: googleAccessID,
+			PrivateKey:     []byte(PrivateKey),
 			Method:         "GET",
 			Expires:        expirationTime,
 		})
