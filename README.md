@@ -12,8 +12,11 @@ POS-API is an API-based Point of Sale (POS) system designed to facilitate sales 
 
 3. **Manage Products:**
    - Comprehensive product management, including adding, editing, deleting, and viewing product details.
-
-4. **Manage Categories:**
+     
+4. **Manage Users:**
+   - User management capabilities for creating, updating, and managing user
+     
+5. **Manage Categories:**
    - Organize and manage product categories to enhance customer navigation and product accessibility.
 
 ## Documentation
